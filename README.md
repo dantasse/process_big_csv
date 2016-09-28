@@ -12,7 +12,7 @@ The main file is `yfcc100m_dataset`. Of course, being 49Gb, that's not in this r
 ## Question 1: Canon vs Nikon
 I hear that, among camera people, Canon vs Nikon is a kinda funny holy war, similar to vim vs emacs. (When I ask actual camera people if they care, they roll their eyes. Come to think of it, programmers roll their eyes at vim vs emacs too. But let's pretend we care.) So let's try to figure out if more people take photos with Canon or Nikon cameras in this data set.
 
-### Approach 1: The Easy Way
+### Approach 1: Good old fashioned `for` loops
 Well, we can just loop through the rows and count. See `nonparallel.py`. On a cloud machine I've got:
 
     [~/process_big_csv]$ time ./nonparallel.py --input_file=../yfcc100m_1m.tsv
@@ -34,6 +34,7 @@ Err, this is not terrible. If you only will ever have to do this task once, or i
 ### Approach 2: Thinking with multiprocessing and Pools
 So we can get it done single-threaded (single-process, even) in a matter of minutes. But why? The other cores are [just sitting there watching](https://twitter.com/reubenbond/status/662061791497744384?lang=en)! Let's use em.
 
+#### Approach 2.1
 `multiprocessing` seems to be the most popular thing to use in order to do anything parallel in python. And it seems the simplest way to do it is with a Pool. Make a function that does what you want, then `multiprocessing.Map()` it over the whole iterable. Let's try it (this is pool.py):
 
     canons = 0
@@ -62,6 +63,8 @@ Processes don't share memory. That's what makes them different than threads. So 
 
 Even if they did share memory, there's mad racing going on here; different processes trying to update the same counter variables.
 
+#### Approach 2.2
+
 Let's try passing the counters around so we can actually count:
 
     def process_a_row(row, canons, nikons):
@@ -77,7 +80,7 @@ Let's try passing the counters around so we can actually count:
             canons, nikons = worker_pool.apply(process_a_row, (row, canons, nikons))
         ...
 
-`apply` applies a function to the arguments you give it. (whole code is in `pool2.py`.)
+`apply` picks one of the worker processes in the pool and has that process apply a function to the arguments you give it. (whole code is in `pool2.py`.)
 
     [~/src/process_big_csv]$ time ./pool2.py --input_file=yfcc100m_1m.tsv
     Canons: 338748
@@ -85,7 +88,47 @@ Let's try passing the counters around so we can actually count:
 
     real	1m51.824s
 
-Err... we're about 15x slower, from 7 seconds to 111. Why? Because we're not paralellizing the right thing here. We're parallelizing the computation, all that figuring out if it's a canon or a nikon, but we're not parallelizing the disk I/O, which is probably the slowest part. So we get all the overhead of throwing data between processes, and very little of the speedup. As soon as we did `for row in rdr` in `main()`, we were lost.
+Err... we're about 15x slower, from 7 seconds to 111. Why? Because we're not paralellizing the right thing here. We're parallelizing the computation, all that figuring out if it's a canon or a nikon, but we're not parallelizing the disk I/O, which is probably the slowest part. So we get all the overhead of starting and stopping and throwing data between processes, and very little of the speedup. As soon as we did `for row in rdr` in `main()`, we were lost.
+
+(Plus, still race conditions.)
+
+#### I saw all these tutorials using multiprocessing.Pool, where's the mismatch?
+Yeah. Stuff like this:
+
+    def f(x):
+        return x*x
+
+    worker_pool = multiprocessing.Pool(10)
+    print worker_pool.map(f, [1, 2, 3, 4, 5])
+
+Well, besides the fact that it's silly to use 10 processes to square 5 numbers, it's also assuming that the slow part is the computation, the stuff inside f(). For processing YFCC100M data (and most of the stuff I do), that's not true. I think Pool is great when you have plenty of memory but need to parallelize computation, but we need to parallelize IO and avoid having the whole file in memory.
+
+### Approach 3: one process per processor
+
+Ok, what if, instead of forking off one process per row, we fork off one process per processor, let each one pick off a bunch of rows, count whichever rows it picks off, and then return the count when it's done?
+
+#### Approach 3.1
+
+    def process_some_rows(reader):
+        canons_here = nikons_here = 0
+        for row in reader:
+            if row[7].lower().startswith('canon'):
+                canons_here += 1
+            elif row[7].lower().startswith('nikon'):
+                nikons_here += 1
+        return canons_here, nikons_here
+    ...
+    for i in range(args.num_processes):
+        (canons_here, nikons_here) = worker_pool.apply(process_some_rows, (rdr,))
+        canons += canons_here
+        nikons += nikons_here
+
+(find this in `pool3.py`)
+
+... `TypeError: can't pickle _csv.reader objects`. The error in our thinking is "let each one pick off a bunch of rows" - that's not something a csv.reader is built to do. (in a previous programming life, I used to call this "thread safe" - now it's processes instead of threads, but same basic idea.) We're getting close, though!
+
+#### Approach 3.2
+Ok, so one process per processor, but let's also give each process its own `csv.reader`.
 
 
 
