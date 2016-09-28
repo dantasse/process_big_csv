@@ -13,13 +13,13 @@ The main file is `yfcc100m_dataset`. Of course, being 49Gb, that's not in this r
 I hear that, among camera people, Canon vs Nikon is a kinda funny holy war, similar to vim vs emacs. (When I ask actual camera people if they care, they roll their eyes. Come to think of it, programmers roll their eyes at vim vs emacs too. But let's pretend we care.) So let's try to figure out if more people take photos with Canon or Nikon cameras in this data set.
 
 ### Approach 1: Good old fashioned `for` loops
-Well, we can just loop through the rows and count. See `nonparallel.py`. On a cloud machine I've got:
+Well, we can just loop through the rows and count. See `nonparallel.py`. On my laptop:
 
-    [~/process_big_csv]$ time ./nonparallel.py --input_file=../yfcc100m_1m.tsv
+    [~/src/process_big_csv]$ time ./nonparallel.py --input_file=yfcc100m_1m.tsv
     Canons: 338748
     Nikons: 192088
 
-    real	0m7.876s
+    real	0m5.952s
 
     [~/process_big_csv]$ time ./nonparallel.py --input_file=../yfcc100m_dataset
     Canons: 33593232
@@ -88,7 +88,7 @@ Let's try passing the counters around so we can actually count:
 
     real	1m51.824s
 
-Err... we're about 15x slower, from 7 seconds to 111. Why? Because we're not paralellizing the right thing here. We're parallelizing the computation, all that figuring out if it's a canon or a nikon, but we're not parallelizing the disk I/O, which is probably the slowest part. So we get all the overhead of starting and stopping and throwing data between processes, and very little of the speedup. As soon as we did `for row in rdr` in `main()`, we were lost.
+Err... we're about 20x slower, at almost 2 minutes. Why? Because we're not actually paralellizing anything here. `apply()` is synchronous, and even if we throw in `apply_async` instead, we'd be parallelizing the wrong thing. We're parallelizing the computation, all that figuring out if it's a canon or a nikon, but we're not parallelizing the disk I/O, which is probably the slowest part. So we get all the overhead of starting and stopping and throwing data between processes, and very little of the speedup. As soon as we did `for row in rdr` in `main()`, we were lost.
 
 (Plus, still race conditions.)
 
@@ -125,10 +125,63 @@ Ok, what if, instead of forking off one process per row, we fork off one process
 
 (find this in `pool3.py`)
 
-... `TypeError: can't pickle _csv.reader objects`. The error in our thinking is "let each one pick off a bunch of rows" - that's not something a csv.reader is built to do. (in a previous programming life, I used to call this "thread safe" - now it's processes instead of threads, but same basic idea.) We're getting close, though!
+... `TypeError: can't pickle _csv.reader objects`. The error in our thinking is "let each one pick off a bunch of rows" - that's not something a csv.reader is built to do. (in a previous programming life, I would have called this "thread safe" - now it's processes instead of threads, but same basic idea.) We're getting close, though!
 
 #### Approach 3.2
-Ok, so one process per processor, but let's also give each process its own `csv.reader`.
+Ok, so one process per processor, but let's also give each process its own `csv.reader`. To do this, we'll tell each one which row number to start and stop on.
 
+    def process_some_rows(start_row, end_row):
+        reader = csv.reader(open(args.input_file), delimiter='\t')
+        for i in range(start_row):
+            reader.next()
+
+        canons_here = nikons_here = 0
+        for i in range(end_row - start_row):
+            row = reader.next()
+            if row[7].lower().startswith('canon'):
+                canons_here += 1
+            elif row[7].lower().startswith('nikon'):
+                nikons_here += 1
+        return canons_here, nikons_here
+    ...
+    start_indices = [i * args.num_rows / args.num_processes for i in range(args.num_processes)]
+    end_indices = start_indices[1:] + [args.num_rows]
+
+    for i in range(args.num_processes):
+        (canons_here, nikons_here) = worker_pool.apply(process_some_rows, (starts[i], ends[i]))
+        canons += canons_here
+        nikons += nikons_here
+
+Check it in `pool4.py`.
+
+    [~/src/process_big_csv]$ time ./pool4.py --input_file=yfcc100m_1m.tsv --num_rows=1000000
+    Canons: 338748
+    Nikons: 192088
+
+    real	0m11.026s
+
+Back out of crazy land, but no speedup. Put in some print statements to find out why: remember, `apply()` is synchronous. So we're sort of tossing stuff to another process, but never making two processes do anything in parallel.
+
+#### Approach 3.3: adding in `apply_async`
+I hinted earlier at the existence of `apply_async()`, which would solve this last issue. Only minor changes between pool4 and pool5:
+
+    results = []
+    for i in range(args.num_processes):
+        res = worker_pool.apply_async(process_some_rows, (start_indices[i], end_indices[i]))
+        results.append(res)
+    for res in results:
+        (canons_here, nikons_here) = res.get()
+        canons += canons_here
+        nikons += nikons_here
+
+Instead of just taking the return value for each worker, we have to store the result and then later call `get()` on it. The `apply_async()` starts each process working, and nothing blocks until we call `get()`.
+
+    [~/src/process_big_csv]$ time ./pool5.py --input_file=yfcc100m_1m.tsv --num_rows=1000000
+    Canons: 338748
+    Nikons: 192088
+
+    real	0m6.388s
+
+We're almost back to our stupid nonparallel baseline! Why can't we beat it? Well, say we've got 3 processes going: one is doing rows 0-333333, one is doing rows 333334-666666, and one is doing rows 666667-1000000. Process #3 has to just skip past rows 0-666666 before even doing anything, and that takes about as long as actually reading those rows.
 
 
