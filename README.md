@@ -13,6 +13,27 @@ The main file is `yfcc100m_dataset`. Of course, being 49Gb, that's not in this r
 I hear that, among camera people, Canon vs Nikon is a kinda funny holy war, similar to vim vs emacs. (When I ask actual camera people if they care, they roll their eyes. Come to think of it, programmers roll their eyes at vim vs emacs too. But let's pretend we care.) So let's try to figure out if more people take photos with Canon or Nikon cameras in this data set.
 
 ### Approach 1: The Easy Way
-Well, we can just loop through the rows and count.
+Well, we can just loop through the rows and count. See `nonparallel.py`. On my reference machine:
 
-Don't discount this! In fact, if you only will ever have to do this task once, stop reading here and just do this the easy way. 
+    [last: 5s][~/src/process_big_csv]$ time ./nonparallel.py --input_file=yfcc100m_1m.tsv
+    Canons: 338748
+    Nikons: 192088
+
+    real	0m5.845s
+
+On a cloud machine I've got:
+
+    [last: 0s][~/process_big_csv]$ time ./nonparallel.py --input_file=../yfcc100m_1m.tsv
+    Canons: 33597
+    Nikons: 19292
+
+    real	0m0.801s
+
+Err, this is pretty fast. If you only will ever have to do this task once, or if this is fast enough for you, stop reading here and just do this the easy way. 
+
+(side note: yeah, I got [this sweet script that times everything I do](http://jakemccrary.com/blog/2015/05/03/put-the-last-commands-run-time-in-your-bash-prompt/))
+
+### Approach 2: Thinking with multiprocessing and Pools
+But, I mean, the other cores are [just sitting there watching](https://twitter.com/reubenbond/status/662061791497744384?lang=en). Let's use em.
+
+`multiprocessing` seems to be the most popular thing to use in order to do anything parallel in python. And it seems the simplest way to do it is with a Pool. 
