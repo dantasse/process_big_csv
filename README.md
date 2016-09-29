@@ -188,8 +188,12 @@ We're almost back to our stupid nonparallel baseline! Why can't we beat it? Well
 
 Looping through rows with a csv.reader is slow. Using `file.seek()` is fast. So instead of chopping it into rows, let's chop it up by bytes.
 
+    # Check the code for some screwing around to determine the file size.
+    ...
     infile = open(args.input_file)
     infile.seek(start_point)
+    ...
+    # Check the code too for some off-by-one futzing.
     ...
     while True:
         row = infile.readline().split('\t')
@@ -212,4 +216,5 @@ See `pool6.py`
 
     real	0m2.590s
 
-Heyo! We're starting to cut our time. (I'm running with 4 processes on my 4 core computer.) Just one annoyance: why do we have to know the file size?
+Heyo! We're running in parallel! (I'm running with 4 processes on my 4 core computer.)
+

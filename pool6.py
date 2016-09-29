@@ -6,7 +6,6 @@ import argparse, csv, multiprocessing, time, random
 parser = argparse.ArgumentParser()
 parser.add_argument('--input_file', default='yfcc100m_1k.tsv')
 parser.add_argument('--num_processes', type=int, default=multiprocessing.cpu_count())
-parser.add_argument('--file_size', type=int, default=484*1024)
 args = parser.parse_args()
 
 csv.field_size_limit(200*1000) # There are some big fields in YFCC100M.
@@ -48,8 +47,12 @@ def process_some_rows(start_point, end_point):
     return canons_here, nikons_here
     
 def main():
-    start_indices = [i * args.file_size / args.num_processes for i in range(args.num_processes)]
-    end_indices = start_indices[1:] + [args.file_size]
+    input_file = open(args.input_file)
+    input_file.seek(0, 2) # , 2 means "relative to the end of the file."
+    file_size = input_file.tell()
+
+    start_indices = [i * file_size / args.num_processes for i in range(args.num_processes)]
+    end_indices = start_indices[1:] + [file_size]
 
     worker_pool = multiprocessing.Pool(args.num_processes)
     canons = nikons = 0
