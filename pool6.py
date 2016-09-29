@@ -2,7 +2,7 @@
 
 # Multiprocessing with Pool, take four.
 
-import argparse, csv, multiprocessing, time, random
+import argparse, csv, multiprocessing, os
 parser = argparse.ArgumentParser()
 parser.add_argument('--input_file', default='yfcc100m_1k.tsv')
 parser.add_argument('--num_processes', type=int, default=multiprocessing.cpu_count())
@@ -47,9 +47,7 @@ def process_some_rows(start_point, end_point):
     return canons_here, nikons_here
     
 def main():
-    input_file = open(args.input_file)
-    input_file.seek(0, 2) # , 2 means "relative to the end of the file."
-    file_size = input_file.tell()
+    file_size = os.path.getsize(args.input_file)
 
     start_indices = [i * file_size / args.num_processes for i in range(args.num_processes)]
     end_indices = start_indices[1:] + [file_size]
