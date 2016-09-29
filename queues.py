@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 
-# Loop through the yfcc dataset. Just output something for the rows that match
-# a certain criterion (say, they're in the right place).
-
 import argparse, csv, multiprocessing
 
 csv.field_size_limit(200*1000)

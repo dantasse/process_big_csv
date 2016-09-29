@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 
-# Loop through a big file non-parallel-wise, just for comparison.
-
 import argparse, csv
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input_file', default='yfcc100m_1k.tsv')
 args = parser.parse_args()
 
-csv.field_size_limit(200*1000) # There are some big fields in YFCC100M.
+csv.field_size_limit(200*1000)
 
 canons = 0
 nikons = 0

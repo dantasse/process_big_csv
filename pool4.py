@@ -1,15 +1,13 @@
 #!/usr/bin/env python
 
-# Multiprocessing with Pool, take four.
-
 import argparse, csv, multiprocessing, time, random
 parser = argparse.ArgumentParser()
 parser.add_argument('--input_file', default='yfcc100m_1k.tsv')
-parser.add_argument('--num_processes', type=int, default=multiprocessing.cpu_count()-1)
+parser.add_argument('--num_processes', type=int, default=multiprocessing.cpu_count())
 parser.add_argument('--num_rows', type=int, default=1000)
 args = parser.parse_args()
 
-csv.field_size_limit(200*1000) # There are some big fields in YFCC100M.
+csv.field_size_limit(200*1000)
 
 def process_some_rows(start_row, end_row):
     reader = csv.reader(open(args.input_file), delimiter='\t')
@@ -37,8 +35,8 @@ def main():
         (canons_here, nikons_here) = worker_pool.apply(process_some_rows, (start_indices[i], end_indices[i]))
         canons += canons_here
         nikons += nikons_here
-    worker_pool.close() # No more jobs for this pool.
-    worker_pool.join() # Wait in this process until all the workers finish.
+    worker_pool.close()
+    worker_pool.join()
     print "Canons: %s" % canons
     print "Nikons: %s" % nikons
 

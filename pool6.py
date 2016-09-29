@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-# Multiprocessing with Pool, take four.
-
 import argparse, csv, multiprocessing, os
 parser = argparse.ArgumentParser()
 parser.add_argument('--input_file', default='yfcc100m_1k.tsv')
@@ -63,8 +61,8 @@ def main():
         canons += canons_here
         nikons += nikons_here
 
-    worker_pool.close() # No more jobs for this pool.
-    worker_pool.join() # Wait in this process until all the workers finish.
+    worker_pool.close()
+    worker_pool.join()
     print "Canons: %s" % canons
     print "Nikons: %s" % nikons
 
