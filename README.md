@@ -184,4 +184,32 @@ Instead of just taking the return value for each worker, we have to store the re
 
 We're almost back to our stupid nonparallel baseline! Why can't we beat it? Well, say we've got 3 processes going: one is doing rows 0-333333, one is doing rows 333334-666666, and one is doing rows 666667-1000000. Process #3 has to just skip past rows 0-666666 before even doing anything, and that takes about as long as actually reading those rows.
 
+#### Approach 3.4: seek faster
 
+Looping through rows with a csv.reader is slow. Using `file.seek()` is fast. So instead of chopping it into rows, let's chop it up by bytes.
+
+    infile = open(args.input_file)
+    infile.seek(start_point)
+    ...
+    while True:
+        row = infile.readline().split('\t')
+        # We lose some of the convenience of csv.reader; so it goes.
+        if row == ['']:
+            break
+        
+        if row[7].lower().startswith('canon'):
+            canons_here += 1
+        elif row[7].lower().startswith('nikon'):
+            nikons_here += 1
+        if infile.tell() > end_point:
+            break
+
+See `pool6.py`
+ 
+    [~/src/process_big_csv]$ time ./pool6.py --input_file=yfcc100m_1m.tsv --file_size=480886784
+    Canons: 338748
+    Nikons: 192088
+
+    real	0m2.590s
+
+Heyo! We're starting to cut our time. (I'm running with 4 processes on my 4 core computer.) Just one annoyance: why do we have to know the file size?

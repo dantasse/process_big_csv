@@ -5,7 +5,7 @@
 import argparse, csv, multiprocessing, time, random
 parser = argparse.ArgumentParser()
 parser.add_argument('--input_file', default='yfcc100m_1k.tsv')
-parser.add_argument('--num_processes', type=int, default=multiprocessing.cpu_count()-1)
+parser.add_argument('--num_processes', type=int, default=multiprocessing.cpu_count())
 parser.add_argument('--file_size', type=int, default=484*1024)
 args = parser.parse_args()
 
@@ -14,26 +14,42 @@ csv.field_size_limit(200*1000) # There are some big fields in YFCC100M.
 def process_some_rows(start_point, end_point):
     infile = open(args.input_file)
     infile.seek(start_point)
-    infile.readline() # clear out whatever partial line you're on.
-    reader = csv.reader(open(infile), delimiter='\t') # start a CSV reader from there.
-    for i in range(start_row):
-        reader.next()
+    
+    # This block is to clear out whatever partial line you're on. If your seek
+    # lands you somewhere in the middle of a line, clear that line out with a
+    # readline() call before you start reading it for real. (another process
+    # will hit that line.) If you happen to land at the start of a line,
+    # though, don't readline() because that will eat up a line that no other
+    # process will get.
+    # If you skip this whole block, you might just be off by one. In a lot of
+    # real-world cases (and even for counting Canons and Nikons), that won't
+    # matter at all.
+    if start_point == 0:
+        pass
+    else:
+        infile.seek(-1, 1) # , 1 means "relative to current location."
+        if infile.read(1) != '\n':
+            infile.readline() 
 
     canons_here = nikons_here = 0
-    for i in range(end_row - start_row):
-        row = reader.next()
+    while True:
+        row = infile.readline().split('\t')
+        # We lose some of the convenience of csv.reader; so it goes.
+        if row == ['']:
+            break
+        
         if row[7].lower().startswith('canon'):
             canons_here += 1
         elif row[7].lower().startswith('nikon'):
             nikons_here += 1
+        if infile.tell() > end_point:
+            break
+        
     return canons_here, nikons_here
     
 def main():
     start_indices = [i * args.file_size / args.num_processes for i in range(args.num_processes)]
-    end_indices = start_indices[1:] + [args.num_rows]
-    # so, if num_processes is 3 and num_rows is 1000, we have [0, 333, 666] and
-    # [333, 666, 1000]
-    print start_indices, end_indices
+    end_indices = start_indices[1:] + [args.file_size]
 
     worker_pool = multiprocessing.Pool(args.num_processes)
     canons = nikons = 0
