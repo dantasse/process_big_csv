@@ -63,7 +63,7 @@ Okay! Uh...
 
 Processes don't share memory. That's what makes them different than threads. So you spawn off N new processes, they all go do their thing and get different values of `canons` and `nikons`, but then when the main thread goes to print at the end it still has its own values of `canons` and `nikons`: both zero. More detail on [this stackoverflow](http://stackoverflow.com/questions/659865/python-multiprocessing-sharing-a-large-read-only-object-between-processes).
 
-Even if they did share memory, there's mad racing going on here; different processes trying to update the same counter variables.
+Even if they did share memory, there's mad racing going on here; different processes trying to update the same counter variables. (Imagine you had two different processes incrementing `canons` at the same time. The current `canons` is 294, so they both read 294, they both add one, then they both write 295, though it should be 296. Wikipedia [has a little more detail](https://en.wikipedia.org/wiki/Race_condition#Example) if you're not familiar with the idea.)
 
 #### Try 2.2: sharing memory even when you can't share memory
 
